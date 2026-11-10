@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>シフト給与帳</title>
+<meta name="apple-mobile-web-app-title" content="給与帳">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f3f2ee" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14151d" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<script src="config.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: one narrow column like a shift ledger; sticky month bar on top, tab bar at the bottom for thumb reach */
+:root{
+  --bg:#f3f2ee; --surface:#ffffff; --sunken:#e9e8e2; --line:#d9d7cf;
+  --fg:#1d1f2b; --muted:#6a6b75; --accent:#a4661a; --accent-fg:#ffffff;
+  --night:#3d3f8f; --night-bg:#e4e4f5; --ok:#2f7a4f; --warn:#b23a2a; --warn-bg:#f8e3df;
+  --oka:#a4661a; --hiro:#2d6f86;
+  --f-display:"Dela Gothic One","Hiragino Sans","Yu Gothic",sans-serif;
+  --f-body:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",sans-serif;
+  --f-num:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#14151d; --surface:#1e2029; --sunken:#272934; --line:#353844;
+  --fg:#ecebe6; --muted:#9a9ba6; --accent:#e0a54e; --accent-fg:#1a1408;
+  --night:#aeb0ff; --night-bg:#2b2d55; --ok:#6fcf97; --warn:#ff8f7d; --warn-bg:#47221d;
+  --oka:#e0a54e; --hiro:#6cc0dc; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#14151d; --surface:#1e2029; --sunken:#272934; --line:#353844;
+  --fg:#ecebe6; --muted:#9a9ba6; --accent:#e0a54e; --accent-fg:#1a1408;
+  --night:#aeb0ff; --night-bg:#2b2d55; --ok:#6fcf97; --warn:#ff8f7d; --warn-bg:#47221d;
+  --oka:#e0a54e; --hiro:#6cc0dc; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.6;-webkit-text-size-adjust:100%}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.wrap{max-width:560px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 calc(84px + env(safe-area-inset-bottom,0px))}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* month bar */
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:12px 10px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+.bar h1{font-family:var(--f-display);font-weight:400;font-size:20px;margin:0;flex:1;text-align:center;letter-spacing:.02em}
+.bar small{display:block;font-family:var(--f-body);font-size:11px;color:var(--muted);letter-spacing:.04em}
+.iconbtn{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--surface);font-size:18px;line-height:1}
+
+/* tabs */
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);padding:6px max(8px,env(safe-area-inset-right,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px));display:flex;justify-content:center}
+.tabs div{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;width:100%;max-width:560px}
+.tab{border:0;background:none;padding:8px 0;border-radius:8px;font-size:13px;font-weight:500;color:var(--muted)}
+.tab[aria-selected="true"]{color:var(--fg);background:var(--sunken);font-weight:700}
+
+section{display:flex;flex-direction:column;gap:14px;padding-top:16px}
+h2{font-size:12px;letter-spacing:.12em;color:var(--muted);margin:8px 0 0;font-weight:700}
+.note{font-size:13px;color:var(--muted);margin:0}
+.banner{background:var(--warn-bg);color:var(--warn);border-radius:var(--r);padding:10px 12px;font-size:13px}
+
+/* store input cards */
+.store{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.store-h{display:flex;align-items:center;gap:10px;padding:12px 14px}
+.store-h b{font-size:17px}
+.pref{font-size:11px;font-weight:700;letter-spacing:.06em;padding:2px 8px;border-radius:99px;border:1px solid currentColor}
+.pref.oka{color:var(--oka)} .pref.hiro{color:var(--hiro)}
+.store-h .meta{margin-left:auto;font-size:12px;color:var(--muted)}
+.store-b{padding:0 14px 14px;display:flex;flex-direction:column;gap:10px}
+textarea{width:100%;min-height:140px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);padding:10px;font:inherit;font-size:16px;line-height:1.5;resize:vertical}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:9px 14px;font-weight:700;font-size:14px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.btn.danger{color:var(--warn);border-color:var(--warn)}
+.btn:disabled{opacity:.45;cursor:default}
+.preview{border-top:1px dashed var(--line);padding-top:10px;display:flex;flex-direction:column;gap:8px}
+.pv-day{font-weight:700;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tag{font-size:11px;padding:1px 7px;border-radius:99px;background:var(--sunken);color:var(--muted);font-weight:500}
+.tag.over{background:var(--warn-bg);color:var(--warn)}
+.msg{font-size:13px;color:var(--warn)}
+.msg.okmsg{color:var(--ok)}
+
+/* shift table */
+.tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+.tbl th{font-size:11px;font-weight:500;color:var(--muted);text-align:right;padding:4px 4px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl th:first-child,.tbl td:first-child{text-align:left}
+.tbl td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+.tbl tr:last-child td{border-bottom:0}
+.scroll{overflow-x:auto}
+.nt{color:var(--night);background:var(--night-bg);border-radius:4px;padding:0 4px}
+.brk{font-size:11px;color:var(--muted)}
+
+/* summary */
+.total{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.total .lbl{font-size:12px;color:var(--muted);letter-spacing:.08em}
+.total .big{font-family:var(--f-display);font-size:34px;line-height:1.2;letter-spacing:.01em}
+.total .big span{font-family:var(--f-body);font-size:16px;margin-left:4px}
+.total .sub{font-size:13px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap;margin-top:4px}
+.bars{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.barrow{display:grid;grid-template-columns:6.5em 1fr auto;gap:10px;align-items:center;font-size:13px}
+.track{height:10px;background:var(--sunken);border-radius:99px;overflow:hidden}
+.fill{height:100%;border-radius:99px}
+.fill.oka{background:var(--oka)} .fill.hiro{background:var(--hiro)}
+.person{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.person summary{list-style:none;display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:12px 14px;cursor:pointer}
+.person summary::-webkit-details-marker{display:none}
+.person .nm{font-weight:700;font-size:16px}
+.person .pay{font-family:var(--f-num);font-weight:700;font-size:16px;text-align:right}
+.person .ln{grid-column:1/-1;font-size:12.5px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap}
+.person .inner{padding:0 14px 12px}
+.warnchip{font-size:11px;color:var(--warn);background:var(--warn-bg);border-radius:99px;padding:1px 8px}
+
+/* ledger */
+.rep{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.rep-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.rep-h .d{font-family:var(--f-num);font-weight:700}
+.rep-h .sum{margin-left:auto;font-family:var(--f-num);font-weight:700}
+.empty{background:var(--surface);border:1px dashed var(--line);border-radius:var(--r);padding:20px;text-align:center;color:var(--muted);font-size:14px}
+
+/* settings */
+.set{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:4px 14px}
+.set-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.set-row:last-child{border-bottom:0}
+.set-row label{flex:1;min-width:0}
+.set-row input,.set-row select{width:7.5em;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);padding:7px 8px;font:inherit;font-size:16px;text-align:right}
+.set-row .unit{font-size:12px;color:var(--muted);width:2em}
+.rules{font-size:13px;color:var(--muted);margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:4px}
+@media (prefers-reduced-motion:no-preference){.fill{transition:width .4s ease}}
+html,body{margin:0}
+:root{padding-top:env(safe-area-inset-top,0px)}
+.pref.etc{color:var(--muted)} .fill.etc{background:var(--muted)}
+.store-edit{display:grid;grid-template-columns:1fr 6.5em auto;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.store-edit:last-child{border-bottom:0}
+.store-edit input,.store-edit select{width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);padding:7px 8px;font:inherit;font-size:16px}
+.btn.sm{padding:6px 10px;font-size:13px}
+[hidden]{display:none!important}
+.lock{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px max(16px,env(safe-area-inset-right,0px)) 24px max(16px,env(safe-area-inset-left,0px))}
+.lock form{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:24px;width:100%;max-width:340px;display:flex;flex-direction:column;gap:12px}
+.lock h1{font-family:var(--f-display);font-weight:400;font-size:24px;margin:0}
+.lock input{border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);padding:10px;font:inherit;font-size:18px;letter-spacing:.2em;text-align:center}
+</style>
+</head>
+<body>
+
+<div class="lock" id="lock" hidden>
+  <form id="lockForm">
+    <h1>シフト給与帳</h1>
+    <label class="note" for="pin">合言葉を入れてください</label>
+    <input id="pin" type="password" inputmode="text" autocomplete="current-password">
+    <button class="btn primary" type="submit">開く</button>
+    <span class="msg" id="pinMsg"></span>
+  </form>
+</div>
+
+<div class="wrap" id="app" hidden>
+  <header class="bar">
+    <button class="iconbtn" id="prev" aria-label="前の月">‹</button>
+    <h1 id="monthTitle">—<small id="periodText"></small></h1>
+    <button class="iconbtn" id="next" aria-label="次の月">›</button>
+  </header>
+
+  <div id="offline" class="banner" hidden style="margin-top:12px"></div>
+
+  <section id="v-input">
+    <p class="note">LINEの報告をそのまま貼り付けて「読み取る」→「保存」。同じ日・同じ店舗をもう一度保存すると上書きされます。</p>
+    <div id="stores"></div>
+  </section>
+
+  <section id="v-sum" hidden></section>
+  <section id="v-ledger" hidden></section>
+  <section id="v-set" hidden></section>
+</div>
+
+<nav class="tabs" id="tabs" aria-label="画面切り替え" hidden><div role="tablist">
+  <button class="tab" role="tab" data-v="input" aria-selected="true">入力</button>
+  <button class="tab" role="tab" data-v="sum" aria-selected="false">集計</button>
+  <button class="tab" role="tab" data-v="ledger" aria-selected="false">明細</button>
+  <button class="tab" role="tab" data-v="set" aria-selected="false">設定</button>
+</div></nav>
+
+<script>
+/* ---------- 定数 ---------- */
+const DEFAULT_STORES=[
+  {key:"tsukiyo-hiru",name:"月夜（昼）",pref:"岡山"},
+  {key:"tsukiyo",name:"月夜",pref:"岡山"},
+  {key:"suba",name:"SUBA",pref:"岡山"},
+  {key:"akebono",name:"曙店",pref:"広島"},
+  {key:"kinotoko",name:"木之床店",pref:"広島"},
+];
+let STORES=DEFAULT_STORES;
+const PREFCLS=new Proxy({"岡山":"oka","広島":"hiro"},{get:(o,k)=>o[k]||"etc"});
+const API_URL=(window.APP_CONFIG&&window.APP_CONFIG.API_URL)||"";
+const DEFAULT_MINWAGE={
+  "岡山":[{from:"2025-12-01",rate:1047},{from:"2026-10-02",rate:1104}],
+  "広島":[{from:"2025-11-01",rate:1085},{from:"2026-10-11",rate:1141}],
+};
+const storeByKey=k=>STORES.find(s=>s.key===k);
+
+/* ---------- 状態 ---------- */
+let reports={};            // id -> {store,date,shifts:[{name,start,end,brk}],savedAt}
+let settings={wages:{},cutoff:0,minWage:DEFAULT_MINWAGE,stores:DEFAULT_STORES};
+let canWrite=true, PIN="";
+let monthOffset=0, view="input";
+const drafts={}, parsed={};
+
+/* ---------- 便利関数 ---------- */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const hm=m=>`${Math.floor(m/60)}:${String(m%60).padStart(2,"0")}`;
+const yen=n=>Math.floor(n+1e-9).toLocaleString("ja-JP");
+const pad=n=>String(n).padStart(2,"0");
+const iso=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const fromIso=s=>{const[y,m,d]=s.split("-").map(Number);return new Date(y,m-1,d)};
+const md=s=>{const d=fromIso(s);return `${d.getMonth()+1}/${d.getDate()}（${"日月火水木金土"[d.getDay()]}）`};
+const ls={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+
+/* ---------- 読み取り ---------- */
+const RE_HEAD=/^(\d{1,2})\/(\d{1,2})(?:\s*[(（].[)）])?\s*(.*)$/;
+const RE_SHIFT=/^([^\d\s:：][^\d:：]*?)\s*(\d{1,2}):(\d{2})\s*[-~〜ー―－]\s*(\d{1,2}):(\d{2})(.*)$/;
+const RE_BRK=/休憩\s*(\d+(?:\.\d+)?)\s*(h|時間|分|m|min)?/i;
+const RE_NOBRK=/^(.*?)\s*休憩\s*(?:なし|無し|無|ナシ)/;
+const RE_PREFIX=/^\d{1,2}:\d{2}\t[^\t]*\t/;
+const squash=s=>s.normalize("NFKC").replace(/[\s()（）店]/g,"");
+
+/* 名前：敬称を外し、「田村 太郎」は苗字「田村」にそろえる */
+const canonName=n=>n.normalize("NFKC").trim().replace(/\s*(さん|くん|君|ちゃん|様)$/,"").split(/\s+/)[0];
+/* 「田村太郎」のように空白なしで書かれた場合も、2文字以上の既知の苗字で始まればまとめる */
+let ALIAS={};
+function rebuildAlias(){
+  const names=[...new Set(Object.values(reports).flatMap(r=>r.shifts.map(s=>canonName(s.name))).concat(Object.keys(settings.wages||{})))].sort((a,b)=>a.length-b.length);
+  ALIAS={};
+  for(const n of names){
+    const base=names.find(b=>b.length>=2&&b.length<n.length&&n.startsWith(b));
+    ALIAS[n]=base?(ALIAS[base]||base):n;
+  }
+}
+const aliasOf=n=>{const c=canonName(n);return ALIAS[c]||c};
+const knownNames=()=>new Set(Object.values(reports).flatMap(r=>r.shifts.map(s=>aliasOf(s.name))).concat(Object.keys(settings.wages||{})));
+function guessYear(m){
+  const t=new Date(); let y=t.getFullYear();
+  if(m>t.getMonth()+2) y--; else if(m<t.getMonth()-9) y++;
+  return y;
+}
+function parseText(text,storeKey){
+  const out=[]; let cur=null; const unread=[]; let inNote=false;
+  for(let raw of text.split(/\r?\n/)){
+    let s=raw.normalize("NFKC").replace(RE_PREFIX,"").replace(/^"|"$/g,"").trim();
+    if(!s){inNote=false;continue}
+    let m=s.match(RE_HEAD);
+    if(m && !RE_SHIFT.test(s)){
+      const mo=+m[1], d=+m[2];
+      if(mo>=1&&mo<=12&&d>=1&&d<=31){
+        cur={date:iso(new Date(guessYear(mo),mo-1,d)),header:m[3].trim(),shifts:[]};
+        out.push(cur); continue;
+      }
+    }
+    m=s.match(RE_SHIFT);
+    // 問題事・注意点は、その行から次の空行までを読まない（知っている名前の勤務行が来たら終わり）
+    if(/^(問題|注意|連絡|メモ|備考)/.test(s)){inNote=true;continue}
+    if(inNote){
+      const head=m?m[1]:((s.match(RE_NOBRK)||[])[1]||"");
+      if(head.trim() && knownNames().has(aliasOf(head))) inNote=false;
+      else continue;
+    }
+    // 「休憩なし」だけの行（名前つきならその人、名前なしならその日の全員）
+    const nb=s.match(RE_NOBRK);
+    if(nb && !m){
+      if(!cur){cur={date:null,header:"",shifts:[]};out.push(cur)}
+      const who=nb[1].trim()?canonName(nb[1]):"";
+      (cur.noBrk??=new Set()).add(who||"*");
+      for(const x of cur.shifts) if(!who||x.name===who) x.brk=0;
+      continue;
+    }
+    if(m && m[1].length<=10 && !/[、。！!？?「」:：]/.test(m[1])){
+      if(!cur){cur={date:null,header:"",shifts:[]};out.push(cur)}
+      let start=+m[2]*60+ +m[3], end=+m[4]*60+ +m[5];
+      if(end<=start) end+=1440;
+      const name=canonName(m[1]);
+      let brk=null; const b=m[6].match(RE_BRK);
+      if(RE_NOBRK.test(m[6]) || cur.noBrk?.has("*") || cur.noBrk?.has(name)) brk=0;
+      else if(b){const v=parseFloat(b[1]), u=(b[2]||"").toLowerCase();brk=(u==="分"||u==="m"||u==="min")?Math.round(v):(u||v<10)?Math.round(v*60):Math.round(v)}
+      cur.shifts=cur.shifts.filter(x=>!(x.name===name&&x.start===start));
+      cur.shifts.push({name,start,end,brk});
+      continue;
+    }
+    // それ以外の行（注意点・メモなど）は無視
+  }
+  // 見出しの店名が別の店舗っぽいとき
+  for(const r of out){
+    r.warn=[];
+    const h=squash(r.header);
+    if(h){
+      const other=STORES.filter(x=>x.key!==storeKey).find(x=>squash(x.name)===h || (h.includes(squash(x.name)) && squash(x.name).length>squash(storeByKey(storeKey).name).length));
+      if(other) r.warn.push(`見出しが「${r.header}」です。${other.name}の報告ではありませんか？`);
+    }
+  }
+  return {reports:out.filter(r=>r.shifts.length),unread};
+}
+
+/* ---------- 計算 ---------- */
+function minWage(pref,date){
+  let rate=null;
+  for(const r of [...(settings.minWage?.[pref]||[])].sort((a,b)=>a.from<b.from?-1:1)) if(r.from<=date) rate=r.rate;
+  return rate;
+}
+const isNight=t=>{const x=((t%1440)+1440)%1440;return x>=1320||x<300};
+function calcShift(sh,storeKey,date){
+  const pref=storeByKey(storeKey)?.pref;
+  const mw=minWage(pref,date);
+  const name=aliasOf(sh.name);
+  const set=Number(settings.wages?.[name])||0;
+  const rate=set||mw||0;
+  let mins=[]; for(let t=sh.start;t<sh.end;t++) mins.push(t);
+  // 「休憩なし」と書いてある時だけ休憩なし。何も書いていなければ、勤務の合計が6時間以上で45分
+  const brk=sh.brk!=null?sh.brk:(mins.length>=360?45:0);
+  // 休憩は深夜でない時間から引く（足りなければ深夜から）
+  let left=brk;
+  for(let i=mins.length-1;i>=0&&left>0;i--) if(!isNight(mins[i])){mins.splice(i,1);left--}
+  for(let i=mins.length-1;i>=0&&left>0;i--){mins.splice(i,1);left--}
+  const work=mins.length, night=mins.filter(isNight).length, over=Math.max(0,work-480);
+  const pay=rate*work/60+rate*.25*night/60+rate*.25*over/60;
+  return {...sh,name,brk,noBrk:sh.brk===0,work,night,over,rate,mw,below:mw&&rate<mw,pay,pref,store:storeKey,date};
+}
+
+function period(offset){
+  const t=new Date(), c=Number(settings.cutoff)||0;
+  let y=t.getFullYear(), m=t.getMonth();
+  if(c && t.getDate()>c) m++;
+  m+=offset; y+=Math.floor(m/12); m=((m%12)+12)%12;
+  const start=c?new Date(y,m-1,c+1):new Date(y,m,1);
+  const end=c?new Date(y,m,c):new Date(y,m+1,0);
+  return {y,m:m+1,start:iso(start),end:iso(end)};
+}
+function rowsIn(p){
+  const rows=[];
+  for(const r of Object.values(reports)) if(r.date>=p.start&&r.date<=p.end)
+    for(const s of r.shifts) rows.push(calcShift(s,r.store,r.date));
+  return rows;
+}
+
+/* ---------- 保存 ---------- */
+const rid=(store,date)=>`${store}_${date}`;
+/* 保存先：Googleスプレッドシート（Apps Script）。未設定ならこの端末の中だけ */
+const LOCAL=!API_URL;
+const localDB={
+  load(){return {reports:ls.get("payroll-reports")||{},settings:ls.get("payroll-settings")||{}}},
+  apiLoad(){return this.load()},
+  apiSaveReports(docs){const d=this.load();for(const x of docs)d.reports[x.id]={store:x.store,date:x.date,shifts:x.shifts,savedAt:new Date().toISOString()};ls.set("payroll-reports",d.reports);return d},
+  apiDelete(id){const d=this.load();delete d.reports[id];ls.set("payroll-reports",d.reports);return d},
+  apiSaveSettings(s){ls.set("payroll-settings",s);return true},
+};
+async function call(fn,...args){
+  if(LOCAL) return localDB[fn](...args);
+  const res=await fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({pin:PIN,action:fn,args})});
+  const j=await res.json();
+  if(!j.ok) throw new Error(j.error||"error");
+  return j.data;
+}
+const isPinErr=e=>/PIN/.test(String(e&&e.message||e));
+function applyData(d){
+  reports=d.reports||{};
+  const s=d.settings||{};
+  settings={wages:s.wages||{},cutoff:s.cutoff||0,minWage:s.minWage||DEFAULT_MINWAGE,stores:s.stores&&s.stores.length?s.stores:DEFAULT_STORES};
+  STORES=settings.stores;
+  rebuildAlias(); renderAll();
+}
+function banner(t){const b=$("#offline");b.textContent=t||"";b.hidden=!t}
+async function load(){
+  try{ applyData(await call("apiLoad")); banner(""); return true }
+  catch(e){ if(isPinErr(e)) throw e; banner("読み込めませんでした。通信状態を確認して、画面を開き直してください。"); return false }
+}
+async function saveReports(store,list){
+  const docs=list.map(rep=>({id:rid(store,rep.date),store,date:rep.date,shifts:rep.shifts.map(s=>({name:s.name,start:s.start,end:s.end,brk:s.brk}))}));
+  applyData(await call("apiSaveReports",docs));
+}
+async function deleteReport(id){ applyData(await call("apiDelete",id)); }
+let settingsChain=Promise.resolve();
+function saveSettings(){
+  const body=JSON.parse(JSON.stringify(settings));
+  STORES=settings.stores; rebuildAlias();
+  settingsChain=settingsChain.then(()=>call("apiSaveSettings",body)).then(()=>banner("")).catch(()=>banner("設定を保存できませんでした。もう一度変更してください。"));
+}
+
+/* ---------- 画面：入力 ---------- */
+function shiftTable(rows,{showPay=true,showStore=false,showDate=false}={}){
+  return `<div class="scroll"><table class="tbl"><thead><tr>
+    ${showDate?"<th>日付</th>":""}<th>${showDate?"店舗":"名前"}</th>${showStore?"<th>店舗</th>":""}<th>勤務</th><th>労働</th><th>深夜</th>${showPay?"<th>金額</th>":""}
+  </tr></thead><tbody>${rows.map(r=>`<tr>
+    ${showDate?`<td class="num">${md(r.date)}</td>`:""}
+    <td>${showDate?esc(storeByKey(r.store)?.name||r.store):esc(r.name)}</td>${showStore?`<td>${esc(storeByKey(r.store)?.name||"")}</td>`:""}
+    <td class="num">${hm(r.start)}-${hm(r.end)}${r.brk?`<div class="brk">休憩${r.brk}分</div>`:(r.noBrk?`<div class="brk">休憩なし</div>`:"")}</td>
+    <td class="num">${hm(r.work)}</td>
+    <td class="num">${r.night?`<span class="nt">${hm(r.night)}</span>`:"—"}</td>
+    ${showPay?`<td class="num">${yen(r.pay)}${r.below?`<div class="warnchip">最低賃金未満</div>`:""}</td>`:""}
+  </tr>`).join("")}</tbody></table></div>`;
+}
+function renderStores(){
+  const p=period(monthOffset);
+  $("#stores").innerHTML=STORES.map(s=>{
+    const n=Object.values(reports).filter(r=>r.store===s.key&&r.date>=p.start&&r.date<=p.end).length;
+    return `<div class="store" data-k="${s.key}">
+      <div class="store-h"><b>${esc(s.name)}</b><span class="pref ${PREFCLS[s.pref]}">${s.pref}</span><span class="meta">${p.m}月 ${n}日分保存済み</span></div>
+      <div class="store-b">
+        <textarea id="ta-${s.key}" placeholder="例）&#10;11/9 ${esc(s.name)}&#10;田村 17:30-24:50&#10;原 20:00-24:50" ${canWrite?"":"disabled"}>${esc(drafts[s.key]||"")}</textarea>
+        <div class="row"><button class="btn primary" data-act="parse" ${canWrite?"":"disabled"}>読み取る</button><button class="btn" data-act="clear">クリア</button></div>
+        <div class="preview" id="pv-${s.key}" ${parsed[s.key]?"":"hidden"}>${renderPreview(s.key)}</div>
+      </div></div>`;
+  }).join("");
+}
+function renderPreview(k){
+  const P=parsed[k]; if(!P) return "";
+  if(P.saved) return `<div class="msg okmsg">${esc(P.saved)}</div>`;
+  if(!P.reports.length) return `<div class="msg">勤務の行が見つかりませんでした。「名前 17:30-24:50」の形になっているか確認してください。</div>`;
+  let h=P.reports.map((r,i)=>{
+    const date=r.date;
+    const rows=date?r.shifts.map(s=>calcShift(s,k,date)):[];
+    const exists=date&&reports[rid(k,date)];
+    return `<div class="pv-day">${date?`<span class="num">${md(date)}</span>`:`<label>日付 <input type="date" data-pv-date="${i}" style="font-size:16px"></label>`}
+      ${exists?`<span class="tag over">上書き</span>`:""}${date?`<span class="tag">${yen(rows.reduce((a,r)=>a+r.pay,0))}円</span>`:""}</div>
+      ${r.warn.map(w=>`<div class="msg">${esc(w)}</div>`).join("")}
+      ${date?shiftTable(rows):`<div class="note">報告に日付の行がありません。日付を選んでください。</div>`}`;
+  }).join("");
+  if(P.unread.length) h+=`<div class="msg">読めなかった行：${P.unread.map(esc).join(" / ")}</div>`;
+  h+=`<div class="row"><button class="btn primary" data-act="save">${P.reports.length>1?P.reports.length+"日分を":""}保存</button><span class="msg" id="err-${k}"></span></div>`;
+  return h;
+}
+
+/* ---------- 画面：集計 ---------- */
+function renderSum(){
+  const p=period(monthOffset), rows=rowsIn(p);
+  const el=$("#v-sum");
+  if(!rows.length){el.innerHTML=`<div class="empty">${p.m}月分の勤務はまだありません。<br>「入力」でLINEの報告を貼り付けると、ここに人ごとの給料が出ます。</div>`;return}
+  const people={};
+  for(const r of rows)(people[r.name]??=[]).push(r);
+  const pList=Object.entries(people).map(([n,rs])=>({n,rs,pay:Math.floor(rs.reduce((a,r)=>a+r.pay,0)+1e-9)})).sort((a,b)=>b.pay-a.pay);
+  const total=pList.reduce((a,x)=>a+x.pay,0);
+  const sum=(rs,f)=>rs.reduce((a,r)=>a+r[f],0);
+  const st=STORES.map(s=>{const rs=rows.filter(r=>r.store===s.key);return {s,pay:sum(rs,"pay"),work:sum(rs,"work")}});
+  const maxPay=Math.max(1,...st.map(x=>x.pay));
+  el.innerHTML=`
+    <div class="total"><div class="lbl">${p.m}月の人件費（支給額合計）</div>
+      <div class="big">${total.toLocaleString("ja-JP")}<span>円</span></div>
+      <div class="sub"><span>${pList.length}人</span><span>労働 <span class="num">${hm(sum(rows,"work"))}</span></span><span>深夜 <span class="num">${hm(sum(rows,"night"))}</span></span></div>
+      <div class="bars">${st.map(x=>`<div class="barrow"><span>${esc(x.s.name)}</span><div class="track"><div class="fill ${PREFCLS[x.s.pref]}" style="width:${x.pay/maxPay*100}%"></div></div><span class="num">${yen(x.pay)}</span></div>`).join("")}</div>
+    </div>
+    <h2>個人別の給料</h2>
+    ${pList.map(x=>{const below=x.rs.some(r=>r.below);const rates=[...new Set(x.rs.map(r=>r.rate))].join("/");return `<details class="person"><summary>
+      <span class="nm">${esc(x.n)} ${below?`<span class="warnchip">最低賃金未満</span>`:""}</span><span class="pay">${x.pay.toLocaleString("ja-JP")}円</span>
+      <span class="ln"><span>${new Set(x.rs.map(r=>r.date)).size}日</span><span>労働 <span class="num">${hm(sum(x.rs,"work"))}</span></span><span>深夜 <span class="num">${hm(sum(x.rs,"night"))}</span></span>${sum(x.rs,"over")?`<span>残業 <span class="num">${hm(sum(x.rs,"over"))}</span></span>`:""}<span>時給 <span class="num">${rates}</span>${settings.wages?.[x.n]?"":"（最低賃金）"}</span></span>
+    </summary><div class="inner">${shiftTable([...x.rs].sort((a,b)=>a.date<b.date?-1:1),{showDate:true})}</div></details>`}).join("")}
+    <p class="note">深夜（22時〜翌5時）は25%増し、1日8時間を超えた分は25%増し。1分単位で計算し、月の合計で1円未満を切り捨てています。</p>`;
+}
+
+/* ---------- 画面：明細 ---------- */
+let armed=null;
+function renderLedger(){
+  const p=period(monthOffset);
+  const list=Object.entries(reports).filter(([,r])=>r.date>=p.start&&r.date<=p.end).sort((a,b)=>a[1].date===b[1].date?STORES.findIndex(s=>s.key===a[1].store)-STORES.findIndex(s=>s.key===b[1].store):(a[1].date<b[1].date?1:-1));
+  const el=$("#v-ledger");
+  if(!list.length){el.innerHTML=`<div class="empty">${p.m}月の報告はまだ保存されていません。</div>`;return}
+  el.innerHTML=list.map(([id,r])=>{
+    const s=storeByKey(r.store), rows=r.shifts.map(x=>calcShift(x,r.store,r.date));
+    return `<div class="rep"><div class="rep-h"><span class="d">${md(r.date)}</span><b>${esc(s?.name||r.store)}</b><span class="pref ${PREFCLS[s?.pref]}">${s?.pref||""}</span><span class="sum">${yen(rows.reduce((a,x)=>a+x.pay,0))}円</span></div>
+      ${shiftTable(rows)}
+      ${canWrite?`<div class="row"><button class="btn danger" data-del="${id}">${armed===id?"もう一度押すと削除":"削除"}</button></div>`:""}</div>`;
+  }).join("");
+}
+
+/* ---------- 画面：設定 ---------- */
+function renderSet(){
+  const names=[...knownNames()].sort((a,b)=>a.localeCompare(b,"ja"));
+  const today=iso(new Date());
+  const dis=canWrite?"":"disabled";
+  const prefs=Object.keys(settings.minWage||{});
+  const used=k=>Object.values(reports).some(r=>r.store===k);
+  $("#v-set").innerHTML=`
+    <h2>店舗</h2>
+    <p class="note">店舗ごとに県を選ぶと、その県の最低賃金で計算します。新しい県は下の「最低賃金の改定を追加」で先に追加してください。</p>
+    <div class="set">
+      ${STORES.map((s,i)=>`<div class="store-edit">
+        <input id="st-name-${i}" data-st-name="${i}" value="${esc(s.name)}" aria-label="店舗名" ${dis}>
+        <select id="st-pref-${i}" data-st-pref="${i}" aria-label="県" ${dis}>${[...new Set(prefs.concat(s.pref))].map(p=>`<option ${p===s.pref?"selected":""}>${esc(p)}</option>`).join("")}</select>
+        <button class="btn sm danger" type="button" data-st-del="${i}" ${dis}>${armedStore===i?"本当に削除":"削除"}</button>
+      </div>`).join("")}
+      <div class="store-edit">
+        <input id="st-new-name" placeholder="新しい店舗名" aria-label="新しい店舗名" ${dis}>
+        <select id="st-new-pref" aria-label="新しい店舗の県" ${dis}>${prefs.map(p=>`<option>${esc(p)}</option>`).join("")}</select>
+        <button class="btn sm primary" type="button" id="st-add" ${dis}>追加</button>
+      </div>
+    </div>
+    <span class="msg" id="st-msg"></span>
+    <h2>時給</h2>
+    <p class="note">空欄の人は、勤務した日の県の最低賃金で計算します。</p>
+    <div class="set">${names.length?names.map((n,i)=>`<div class="set-row"><label for="w-${i}">${esc(n)}</label><input id="w-${i}" class="num" inputmode="numeric" data-wage="${esc(n)}" value="${settings.wages?.[n]||""}" placeholder="最低賃金" ${dis}><span class="unit">円</span></div>`).join(""):`<div class="set-row"><span class="note">報告を保存すると、ここに名前が出ます。</span></div>`}</div>
+    <h2>締め日</h2>
+    <div class="set"><div class="set-row"><label for="cutoff">毎月の締め日</label><select id="cutoff" ${dis}>${[0,5,10,15,20,25].map(c=>`<option value="${c}" ${Number(settings.cutoff)===c?"selected":""}>${c?c+"日":"月末"}</option>`).join("")}</select><span class="unit"></span></div></div>
+    <h2>最低賃金</h2>
+    <div class="set">${Object.entries(settings.minWage||{}).map(([pref,list])=>[...list].sort((a,b)=>a.from<b.from?1:-1).map(r=>`<div class="set-row"><label>${pref} <span class="note">${r.from.replace(/-/g,"/")}から${r.from<=today&&minWage(pref,today)===r.rate?"（いま適用中）":""}</span></label><span class="num">${r.rate.toLocaleString()}</span><span class="unit">円</span></div>`).join("")).join("")}</div>
+    <details class="set" style="padding:10px 14px"><summary style="cursor:pointer;font-weight:700">最低賃金の改定を追加</summary>
+      <div class="set-row"><label for="mw-pref">県</label><input id="mw-pref" list="mw-prefs" placeholder="例：岡山" style="text-align:left"><datalist id="mw-prefs">${prefs.map(p=>`<option value="${esc(p)}">`).join("")}</datalist><span class="unit"></span></div>
+      <div class="set-row"><label for="mw-from">発効日</label><input id="mw-from" type="date" style="width:10em"><span class="unit"></span></div>
+      <div class="set-row"><label for="mw-rate">時給</label><input id="mw-rate" class="num" inputmode="numeric"><span class="unit">円</span></div>
+      <div class="row" style="padding-bottom:6px"><button class="btn primary" id="mw-add" ${dis}>追加</button><span class="msg" id="mw-msg"></span></div>
+    </details>
+    <h2>計算のルール</h2>
+    <ul class="rules">
+      <li>店舗の県（${[...new Set(STORES.map(s=>s.pref))].map(p=>`${esc(p)}：${STORES.filter(s=>s.pref===p).map(s=>esc(s.name)).join("・")}`).join("／")}）の最低賃金を、勤務した日付で判定</li>
+      <li>深夜（22:00〜翌5:00）は時給の25%増し。24:50のような表記は翌0:50として扱います</li>
+      <li>勤務が合計6時間以上の人は、休憩45分を自動で引きます（深夜手当が減らないよう、深夜でない時間から）。「休憩なし」と書いてある時だけ引きません。「休憩1h」などと書いてあればその時間を引きます</li>
+      <li>「問題事なし」や注意点・メモの行は計算に使いません</li>
+      <li>1日8時間を超えた分は25%増し（深夜と重なると50%増し）</li>
+      <li>1分単位で計算し、1か月の合計で1円未満を切り捨て</li>
+      <li>同じ苗字は1人として合算します（「田村 太郎」「田村さん」「田村太郎」→ 田村）</li>
+    </ul>
+    ${LOCAL?"":`<p class="note" style="margin-top:12px"><button class="btn" id="logout" type="button">この端末の合言葉を消す</button></p>`}`;
+}
+
+/* ---------- 全体 ---------- */
+function renderAll(){
+  const p=period(monthOffset);
+  $("#monthTitle").firstChild.textContent=`${p.y}年${p.m}月`;
+  $("#periodText").textContent=`${p.start.replace(/-/g,"/")} 〜 ${p.end.replace(/-/g,"/")}`;
+  // 入力欄は打っている途中で作り直さない
+  const ae=document.activeElement;
+  if(!(ae&&ae.tagName==="TEXTAREA")) renderStores();
+  else STORES.forEach(s=>{const pv=$("#pv-"+s.key);if(pv&&parsed[s.key]){pv.hidden=false;pv.innerHTML=renderPreview(s.key)}});
+  renderSum(); renderLedger();
+  if(!($("#v-set").contains(ae)&&ae.tagName==="INPUT")) renderSet();
+}
+function show(v){
+  view=v;
+  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-selected",t.dataset.v===v));
+  ["input","sum","ledger","set"].forEach(x=>$("#v-"+x).hidden=x!==v);
+  window.scrollTo(0,0);
+}
+
+/* ---------- 操作 ---------- */
+document.querySelector(".tabs").addEventListener("click",e=>{const t=e.target.closest(".tab");if(t)show(t.dataset.v)});
+$("#prev").onclick=()=>{monthOffset--;renderAll()};
+$("#next").onclick=()=>{monthOffset++;renderAll()};
+$("#stores").addEventListener("input",e=>{
+  if(e.target.tagName!=="TEXTAREA")return;
+  const k=e.target.closest(".store").dataset.k; drafts[k]=e.target.value; ls.set("payroll-drafts",drafts);
+});
+$("#stores").addEventListener("change",e=>{
+  const i=e.target.dataset.pvDate; if(i==null)return;
+  const k=e.target.closest(".store").dataset.k; parsed[k].reports[i].date=e.target.value||null;
+  const pv=$("#pv-"+k); pv.innerHTML=renderPreview(k);
+});
+$("#stores").addEventListener("click",async e=>{
+  const b=e.target.closest("[data-act]"); if(!b)return;
+  const card=b.closest(".store"), k=card.dataset.k, pv=$("#pv-"+k);
+  if(b.dataset.act==="parse"){
+    parsed[k]=parseText($("#ta-"+k).value,k); pv.hidden=false; pv.innerHTML=renderPreview(k);
+  } else if(b.dataset.act==="clear"){
+    drafts[k]=""; ls.set("payroll-drafts",drafts); $("#ta-"+k).value=""; delete parsed[k]; pv.hidden=true; pv.innerHTML="";
+  } else if(b.dataset.act==="save"){
+    const P=parsed[k];
+    if(P.reports.some(r=>!r.date)){$("#err-"+k).textContent="日付を選んでください。";return}
+    b.disabled=true; b.textContent="保存中…";
+    try{
+      await saveReports(k,P.reports);
+      const days=P.reports.map(r=>md(r.date)).join("・");
+      drafts[k]=""; ls.set("payroll-drafts",drafts); $("#ta-"+k).value="";
+      parsed[k]={saved:`${days} を保存しました。`}; pv.innerHTML=renderPreview(k);
+      setTimeout(()=>{if(parsed[k]?.saved){delete parsed[k];renderAll()}},4000);
+    }catch(err){
+      b.disabled=false; b.textContent="保存";
+      $("#err-"+k).textContent=isPinErr(err)?"合言葉が変わりました。開き直して入れ直してください。":"保存できませんでした。通信状態を確認して、もう一度押してください。";
+    }
+  }
+});
+$("#v-ledger").addEventListener("click",async e=>{
+  const b=e.target.closest("[data-del]"); if(!b)return;
+  const id=b.dataset.del;
+  if(armed!==id){armed=id;renderLedger();setTimeout(()=>{if(armed===id){armed=null;renderLedger()}},3000);return}
+  armed=null; b.disabled=true;
+  try{await deleteReport(id)}catch(err){b.disabled=false;b.textContent="削除できませんでした"}
+});
+$("#v-set").addEventListener("change",e=>{
+  const t=e.target;
+  if(t.dataset.wage!=null){
+    const v=parseInt(t.value.normalize("NFKC").replace(/[^\d]/g,""),10);
+    settings.wages={...settings.wages}; if(v) settings.wages[t.dataset.wage]=v; else delete settings.wages[t.dataset.wage];
+    t.value=v||""; saveSettings(); renderSum(); renderLedger();
+  } else if(t.id==="cutoff"){
+    settings.cutoff=Number(t.value); saveSettings(); renderAll();
+  } else if(t.dataset.stName!=null||t.dataset.stPref!=null){
+    const i=Number(t.dataset.stName??t.dataset.stPref);
+    const st=settings.stores.map(s=>({...s}));
+    if(t.dataset.stName!=null){const v=t.value.trim();if(!v){t.value=st[i].name;return}st[i].name=v}
+    else st[i].pref=t.value;
+    settings.stores=st; saveSettings(); renderAll();
+  }
+});
+let armedStore=null;
+$("#v-set").addEventListener("click",e=>{
+  const t=e.target;
+  if(t.id==="st-add"){
+    const name=$("#st-new-name").value.trim(), pref=$("#st-new-pref").value;
+    if(!name){$("#st-msg").textContent="店舗名を入れてください。";return}
+    if(STORES.some(s=>s.name===name)){$("#st-msg").textContent="同じ名前の店舗があります。";return}
+    settings.stores=STORES.concat({key:"s"+Date.now().toString(36),name,pref});
+    saveSettings(); renderAll(); $("#st-msg").textContent=`${name}を追加しました。「入力」に貼り付け欄ができています。`;return;
+  }
+  if(t.dataset.stDel!=null){
+    const i=Number(t.dataset.stDel), s=STORES[i];
+    if(Object.values(reports).some(r=>r.store===s.key)){$("#st-msg").textContent=`${s.name}には保存済みの報告があるので削除できません。先に「明細」から報告を削除してください。`;return}
+    if(armedStore!==i){armedStore=i;renderSet();setTimeout(()=>{if(armedStore===i){armedStore=null;renderSet()}},3000);return}
+    armedStore=null; settings.stores=STORES.filter((_,j)=>j!==i); saveSettings(); renderAll(); return;
+  }
+  if(t.id==="logout"){try{localStorage.removeItem("payroll-pin")}catch(_){}location.reload();return}
+  if(e.target.id!=="mw-add")return;
+  const pref=$("#mw-pref").value.trim().replace(/[都道府県]$/,""), from=$("#mw-from").value, rate=parseInt(($("#mw-rate").value||"").normalize("NFKC"),10);
+  if(!pref||!from||!rate){$("#mw-msg").textContent="県・発効日・時給を入れてください。";return}
+  const mw=JSON.parse(JSON.stringify(settings.minWage||DEFAULT_MINWAGE));
+  mw[pref]=(mw[pref]||[]).filter(r=>r.from!==from).concat({from,rate});
+  settings.minWage=mw; saveSettings(); renderAll();
+});
+
+/* ---------- 起動 ---------- */
+Object.assign(drafts,ls.get("payroll-drafts")||{});
+function showLock(msg){$("#lock").hidden=false;$("#app").hidden=true;$("#tabs").hidden=true;$("#pinMsg").textContent=msg||"";$("#pin").focus()}
+async function start(){
+  try{
+    $("#app").hidden=false;$("#tabs").hidden=false;$("#lock").hidden=true;
+    banner("読み込み中…"); renderAll();
+    if(await load()) ls.set("payroll-pin",PIN);
+  }catch(e){ showLock("合言葉が違います。") }
+}
+$("#lockForm").addEventListener("submit",e=>{e.preventDefault();PIN=$("#pin").value.trim();if(PIN)start()});
+// ほかの人が入力した分を取り込むため、画面に戻ってきたら読み直す
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&PIN&&!$("#app").hidden)load().catch(()=>showLock("合言葉が変わりました。"))});
+PIN=ls.get("payroll-pin")||"";
+if(LOCAL){ start().then(()=>banner("保存先がまだ設定されていないため、この端末の中だけに保存しています。")) }
+else if(PIN) start(); else showLock();
+if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body>
+</html>
