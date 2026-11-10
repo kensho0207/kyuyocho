@@ -1,5 +1,5 @@
 // 画面のファイルを端末に保存して、すぐ開けるようにする（データ通信は毎回ネットから）
-const CACHE = "kyuyocho-v1";
+const CACHE = "kyuyocho-v2";
 const SHELL = ["./", "index.html", "config.js", "manifest.webmanifest", "icons/icon-192.png", "icons/apple-touch-icon.png"];
 
 self.addEventListener("install", e => {
